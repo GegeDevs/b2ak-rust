@@ -1,0 +1,28 @@
+# syntax=docker/dockerfile:1
+
+# Runtime-only image used by the Docker Hub workflow.
+#
+# The `b2ak` binary is taken from a GitHub Release instead of being compiled
+# inside the image. That keeps the build fast (no Rust toolchain and no
+# QEMU-emulated `cargo build` for arm64/armv7/386) and the image small.
+#
+# The build context must contain this file as `Dockerfile` and the matching
+# architecture's `b2ak` binary at its root.
+FROM alpine:3.24
+
+# git: cloning the AnyKernel repository
+# ca-certificates: Telegram, GitHub and gofile.io HTTPS
+RUN apk add --no-cache git ca-certificates
+
+COPY b2ak /usr/local/bin/b2ak
+RUN chmod 0755 /usr/local/bin/b2ak
+
+# Session database, usage.json, cached magiskboot and per-job workspaces all
+# live here, so it must be a persistent volume.
+RUN mkdir -p /app/workspace
+ENV WORKSPACE_DIR=/app/workspace \
+    RUST_LOG=info
+
+VOLUME ["/app/workspace"]
+
+CMD ["b2ak"]

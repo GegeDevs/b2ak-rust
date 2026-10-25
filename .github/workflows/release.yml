@@ -24,6 +24,8 @@ concurrency:
 
 permissions:
   contents: write
+  # Allows the release job to dispatch the Docker Hub workflow.
+  actions: write
 
 env:
   CARGO_TERM_COLOR: always
@@ -214,3 +216,21 @@ jobs:
             ```bash
             sha256sum -c SHA256SUMS
             ```
+
+  docker:
+    name: Trigger Docker Hub build
+    needs: [prepare, release]
+    runs-on: ubuntu-latest
+    steps:
+      # Releases published with GITHUB_TOKEN do not trigger `on: release`
+      # workflows. Dispatching the run explicitly works because
+      # `workflow_dispatch` is exempt from that restriction.
+      - name: Dispatch Docker Hub workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.prepare.outputs.tag }}
+        run: |
+          set -euo pipefail
+          gh workflow run docker.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            -f version="$VERSION"

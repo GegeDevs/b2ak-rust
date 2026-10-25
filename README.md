@@ -49,9 +49,11 @@ Multiple jobs are processed concurrently (default **4**), bounded by
 | `src/magiskboot.rs` | Magisk APK download and arch-aware `magiskboot` extraction |
 | `src/config.rs` | Environment configuration |
 | `src/usage.rs` | Daily usage limits |
-| `Dockerfile` / `docker-compose.yaml` | Container deployment |
+| `Dockerfile` / `docker-compose.yaml` | Container deployment (builds from source) |
+| `Dockerfile.release` | Runtime image built from release binaries |
 | `.github/workflows/main.yml` | Scheduled GitHub Actions deployment |
 | `.github/workflows/release.yml` | Tag-driven multi-arch binary releases |
+| `.github/workflows/docker.yml` | Multi-arch Docker Hub publishing |
 | `.env.example` | Environment template |
 
 ---
@@ -174,6 +176,63 @@ Rebuild after changing the code:
 ```bash
 docker compose up -d --build
 ```
+
+---
+
+## 🐳 Docker Hub images
+
+The **Docker Hub** workflow publishes a multi-arch image built from the static
+binaries attached to a GitHub Release. Since the binary is copied into the
+image instead of compiled there, even the emulated architectures build in
+seconds.
+
+| Docker platform | Release binary |
+| --- | --- |
+| `linux/amd64` | x86_64 |
+| `linux/arm64` | aarch64 |
+| `linux/arm/v7` | armv7 |
+| `linux/386` | i686 |
+
+### Credentials
+
+Create a Docker Hub **Personal Access Token** with **Read & Write** permission
+under **Account settings → Personal access tokens**, then store it and your
+username as repository secrets:
+
+```bash
+gh secret set DOCKERHUB_USERNAME --repo GegeDevs/b2ak-rust
+gh secret set DOCKERHUB_TOKEN --repo GegeDevs/b2ak-rust
+```
+
+Both commands prompt for the value without echoing it. The workflow fails early
+with a clear error when either secret is missing.
+
+### Publishing
+
+The `Release` workflow dispatches this workflow automatically after a GitHub
+Release is published. To republish an existing release manually:
+
+```bash
+gh workflow run docker.yml --repo GegeDevs/b2ak-rust -f version=v0.1.0
+gh run watch
+```
+
+Stable releases get three tags (`latest`, `X.Y`, `X.Y.Z`); prereleases only get
+the exact version tag.
+
+### Running the image
+
+```bash
+docker pull <dockerhub-user>/b2ak:latest
+
+docker run -d --name b2ak \
+  --env-file .env \
+  -v b2ak_data:/app/workspace \
+  <dockerhub-user>/b2ak:latest
+```
+
+The image is Alpine-based and needs no Rust toolchain. `magiskboot` is still
+downloaded from the Magisk APK on first use and cached in the volume.
 
 ---
 
