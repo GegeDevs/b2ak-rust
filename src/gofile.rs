@@ -80,20 +80,23 @@ impl GofileDownloader {
                 .timeout(self.timeout)
                 .send()
                 .await
-                .context("gofile.io content request failed")?;
+                .map_err(|err| network_error("could not reach api.gofile.io", err))?;
 
             if response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
                 if attempt + 1 < RETRIES {
                     tokio::time::sleep(Duration::from_secs(3 * (attempt as u64 + 1))).await;
                     continue;
                 }
-                bail!("Gofile API rate limit reached (HTTP 429). Please try again shortly.");
+                bail!(
+                    "gofile.io rate limit reached (HTTP 429). Wait a few minutes and try again, \
+                     or set GF_TOKEN to an account token to raise the limit."
+                );
             }
 
             let status = response.status();
             if !status.is_success() {
                 let body = response.text().await.unwrap_or_default();
-                bail!("gofile.io returned HTTP {status}: {}", truncate(&body, 300));
+                bail!("{}", api_error(&body, status));
             }
 
             let payload: Value = response
@@ -196,9 +199,13 @@ impl GofileDownloader {
             )
             .send()
             .await
-            .context("gofile.io file download failed")?
-            .error_for_status()
-            .context("gofile.io file download returned an error status")?;
+            .map_err(|err| network_error("could not download the file from gofile.io", err))?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            bail!("{}", api_error(&body, status));
+        }
 
         let mut file = tokio::fs::File::create(dest)
             .await
@@ -232,33 +239,32 @@ async fn get_or_create_account_token(http: &reqwest::Client, timeout: Duration) 
         .timeout(timeout)
         .send()
         .await
-        .context("gofile.io account creation request failed")?;
+        .map_err(|err| network_error("could not reach api.gofile.io", err))?;
 
     if response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
-        bail!("Gofile account creation rate limited. Please set GF_TOKEN in configuration.");
+        bail!(
+            "gofile.io refused to create a guest account (HTTP 429 rate limit). \
+             Set GF_TOKEN to an account token to skip guest account creation."
+        );
     }
 
     let status = response.status();
     if !status.is_success() {
         let body = response.text().await.unwrap_or_default();
-        bail!(
-            "gofile.io account creation returned HTTP {status}: {}",
-            truncate(&body, 300)
-        );
+        bail!("{}", api_error(&body, status));
     }
 
     let payload: Value = response
         .json()
         .await
         .context("invalid JSON from the gofile.io account API")?;
-    if payload.get("status").and_then(Value::as_str) != Some("ok") {
-        bail!(
-            "Failed to create a gofile.io account token: {}",
-            payload
-                .get("status")
-                .and_then(Value::as_str)
-                .unwrap_or("unknown error")
-        );
+    if let Some(api_status) = payload.get("status").and_then(Value::as_str) {
+        if api_status != "ok" {
+            bail!(
+                "could not create a gofile.io guest account: {} ({api_status})",
+                api_error_reason(api_status)
+            );
+        }
     }
 
     let token = payload
@@ -671,6 +677,80 @@ fn truncate(value: &str, max: usize) -> String {
     value.chars().take(max).collect()
 }
 
+/// Explains why gofile.io rejected a request, so the bot can tell the user what
+/// is wrong instead of showing a raw API payload.
+fn api_error_reason(status: &str) -> &'static str {
+    match status {
+        "error-notPremium" => {
+            "this request needs a Premium gofile.io account (guest tokens are not accepted)"
+        }
+        "error-token" | "error-wrongToken" => "the gofile.io token is missing, invalid or expired",
+        "error-accountId" => "the gofile.io token does not belong to this account",
+        "error-rateLimit" => "gofile.io is rate limiting this server, try again later",
+        "error-notFound" => "the content does not exist or has been deleted",
+        "error-limits" => "the gofile.io account quota has been exceeded",
+        _ => "gofile.io rejected the request",
+    }
+}
+
+/// Builds a readable error from a non-success gofile.io response.
+fn api_error(body: &str, status: reqwest::StatusCode) -> String {
+    let payload: Option<Value> = serde_json::from_str(body).ok();
+    let api_status = payload
+        .as_ref()
+        .and_then(|value| value.get("status"))
+        .and_then(Value::as_str);
+    let message = payload
+        .as_ref()
+        .and_then(|value| value.get("data"))
+        .and_then(|data| data.get("message"))
+        .and_then(Value::as_str)
+        .or_else(|| {
+            payload
+                .as_ref()
+                .and_then(|value| value.get("message"))
+                .and_then(Value::as_str)
+        })
+        .filter(|message| !message.trim().is_empty());
+
+    match api_status {
+        Some(api_status) => {
+            let reason = api_error_reason(api_status);
+            match message {
+                Some(message) => format!(
+                    "gofile.io rejected the request: {reason} ({api_status}, HTTP {status}): {}",
+                    truncate(message.trim(), 200)
+                ),
+                None => {
+                    format!(
+                        "gofile.io rejected the request: {reason} ({api_status}, HTTP {status})"
+                    )
+                }
+            }
+        }
+        None => {
+            let body = body.trim();
+            if body.is_empty() {
+                format!("gofile.io returned HTTP {status} with an empty body")
+            } else {
+                format!("gofile.io returned HTTP {status}: {}", truncate(body, 300))
+            }
+        }
+    }
+}
+
+/// Turns a transport failure into a message that names the actual problem.
+fn network_error(context: &str, err: reqwest::Error) -> anyhow::Error {
+    let reason = if err.is_timeout() {
+        "the request timed out".to_string()
+    } else if err.is_connect() {
+        "the connection could not be established".to_string()
+    } else {
+        err.to_string()
+    };
+    anyhow!("{context}: {reason}")
+}
+
 pub fn extract_content_id(url: &str) -> Result<&str> {
     let trimmed = url.trim_end_matches('/');
     let mut parts = trimmed.rsplit('/');
@@ -708,11 +788,22 @@ pub async fn download_bootimg(
     let downloader = GofileDownloader::new(token.map(str::to_string), timeout).await?;
     let files = downloader.list_files(content_id, password).await?;
     if files.is_empty() {
-        bail!("No files found in the gofile.io content.");
+        bail!(
+            "the gofile.io content has no files (it may be empty, expired or password protected)"
+        );
     }
 
-    let (name, link) = pick_boot_img(&files)
-        .ok_or_else(|| anyhow!("No boot.img file found in the gofile.io content."))?;
+    let (name, link) = pick_boot_img(&files).ok_or_else(|| {
+        let names: Vec<&str> = files
+            .iter()
+            .take(5)
+            .map(|(name, _)| name.as_str())
+            .collect();
+        anyhow!(
+            "no .img file found in the gofile.io content (files: {})",
+            names.join(", ")
+        )
+    })?;
     info!("Downloading {name} from gofile.io");
     downloader.download_file(link, dest).await
 }
@@ -720,6 +811,29 @@ pub async fn download_bootimg(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn explains_the_api_errors_users_hit_most() {
+        assert!(api_error_reason("error-notPremium").contains("Premium"));
+        assert!(api_error_reason("error-token").contains("token"));
+        assert!(api_error_reason("error-notFound").contains("deleted"));
+        assert!(api_error_reason("error-something-new").contains("rejected"));
+    }
+
+    #[test]
+    fn builds_a_readable_error_from_the_api_payload() {
+        let message = api_error(
+            r#"{"status":"error-notPremium","data":{}}"#,
+            reqwest::StatusCode::UNAUTHORIZED,
+        );
+        assert!(message.contains("Premium"), "{message}");
+        assert!(message.contains("error-notPremium"), "{message}");
+        assert!(message.contains("401"), "{message}");
+
+        let raw = api_error("<html>nginx</html>", reqwest::StatusCode::BAD_GATEWAY);
+        assert!(raw.contains("502"), "{raw}");
+        assert!(raw.contains("nginx"), "{raw}");
+    }
 
     #[test]
     fn rc4_matches_the_reference_wikipedia_vector() {

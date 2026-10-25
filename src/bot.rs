@@ -215,14 +215,23 @@ async fn handle_link(state: &Arc<AppState>, message: &Message, text: &str) -> Re
 
     if let Err(err) = download {
         error!("Failed to download from link {url}: {err:#}");
-        let details = if is_gofile {
-            "Make sure it is a valid gofile.io link (append the password after the URL if protected)."
+        let hint = if is_gofile {
+            "Check that the gofile.io link is still public. If the content is password \
+             protected, send the password right after the URL."
         } else {
-            "Make sure it is a direct download link to a boot.img."
+            "The link must point directly to a .img file; preview pages and \
+             login-protected links cannot be downloaded."
         };
         edit_status(
             &status,
-            format!("❌ Failed to download from the link. {details}\n\nError: {err:#}"),
+            format!(
+                "❌ Could not process the link\n\n\
+                 🔗 {url}\n\n\
+                 📄 Reason: {reason}\n\n\
+                 {hint}\n\n\
+                 💡 You can also upload the boot.img file directly to this chat as a document.",
+                reason = truncate(&format!("{err:#}"), 500),
+            ),
         )
         .await;
         return Ok(());
@@ -279,11 +288,38 @@ async fn download_direct(http: &reqwest::Client, url: &str, dest: &Path) -> Resu
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \
              (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         )
+        .timeout(Duration::from_secs(120))
         .send()
         .await
-        .context("failed to send the download request")?
-        .error_for_status()
-        .context("the download server returned an error status")?;
+        .map_err(|err| {
+            if err.is_timeout() {
+                anyhow::anyhow!("the download server did not respond in time (timeout)")
+            } else if err.is_connect() {
+                anyhow::anyhow!("could not connect to the download server")
+            } else {
+                anyhow::anyhow!("the download request failed: {err}")
+            }
+        })?;
+
+    let status = response.status();
+    if !status.is_success() {
+        anyhow::bail!("the server answered with HTTP {status}");
+    }
+
+    // A preview page (Google Drive, Dropbox, ...) returns HTML with HTTP 200.
+    if let Some(content_type) = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+    {
+        let content_type = content_type.to_ascii_lowercase();
+        if content_type.starts_with("text/html") || content_type.starts_with("application/json") {
+            anyhow::bail!(
+                "the link returned {content_type} instead of a file, so it is probably a \
+                 preview page rather than a direct download link"
+            );
+        }
+    }
 
     let mut file = tokio::fs::File::create(dest)
         .await
@@ -304,6 +340,15 @@ async fn download_direct(http: &reqwest::Client, url: &str, dest: &Path) -> Resu
 
 async fn edit_status(status: &Message, text: impl Into<String>) {
     let _ = status.edit(InputMessage::new().text(text.into())).await;
+}
+
+fn truncate(value: &str, max: usize) -> String {
+    if value.chars().count() <= max {
+        return value.to_string();
+    }
+    let mut truncated: String = value.chars().take(max).collect();
+    truncated.push('…');
+    truncated
 }
 
 fn user_id(message: &Message) -> Option<i64> {
