@@ -29,7 +29,6 @@ jobs:
     # the environment for `secrets.DOCKERHUB_*` to resolve.
     environment: DOCKERHUB
     outputs:
-      image: ${{ steps.meta.outputs.image }}
       version: ${{ steps.meta.outputs.version }}
       tag: ${{ steps.meta.outputs.tag }}
       prerelease: ${{ steps.meta.outputs.prerelease }}
@@ -80,11 +79,10 @@ jobs:
             prerelease=true
           fi
 
-          # Docker Hub repository names must be lowercase.
-          image="${DOCKERHUB_USERNAME,,}/b2ak"
-
-          echo "Docker image: $image:$version (prerelease: $prerelease)"
-          echo "image=$image" >> "$GITHUB_OUTPUT"
+          # Do not export the image name as a job output: it contains the
+          # secret username, and GitHub skips such outputs. Each job computes
+          # it locally instead.
+          echo "Resolved release $tag (prerelease: $prerelease)"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
@@ -115,6 +113,15 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+
+      - name: Compute image name
+        shell: bash
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+        run: |
+          set -euo pipefail
+          # Docker Hub repository names must be lowercase.
+          echo "IMAGE=${DOCKERHUB_USERNAME,,}/b2ak" >> "$GITHUB_ENV"
 
       - name: Download release binary
         env:
@@ -154,9 +161,12 @@ jobs:
           context: docker-context
           platforms: ${{ matrix.platform }}
           push: true
+          # A tag is required by buildx when pushing, even though the image is
+          # exported by digest only. The merge job creates the real tags.
+          tags: ${{ env.IMAGE }}:${{ matrix.arch }}
           # Push each platform by digest; the merge job assembles the final
           # multi-arch manifest list with human-readable tags.
-          outputs: type=image,name=${{ needs.prepare.outputs.image }},push-by-digest=true,name-canonical=true,push=true
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
           provenance: false
           sbom: false
           labels: |
@@ -170,7 +180,6 @@ jobs:
 
       - name: Store image digest
         env:
-          IMAGE: ${{ needs.prepare.outputs.image }}
           DIGEST: ${{ steps.build.outputs.digest }}
           ARCH: ${{ matrix.arch }}
         run: |
@@ -199,6 +208,15 @@ jobs:
           pattern: digest-*
           merge-multiple: true
 
+      - name: Compute image name
+        shell: bash
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+        run: |
+          set -euo pipefail
+          # Docker Hub repository names must be lowercase.
+          echo "IMAGE=${DOCKERHUB_USERNAME,,}/b2ak" >> "$GITHUB_ENV"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -211,7 +229,6 @@ jobs:
       - name: Create manifest list and push
         shell: bash
         env:
-          IMAGE: ${{ needs.prepare.outputs.image }}
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           set -euo pipefail
@@ -232,7 +249,8 @@ jobs:
           docker buildx imagetools create "${tags[@]}" "${sources[@]}"
 
       - name: Inspect published image
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           set -euo pipefail
-          image="${{ needs.prepare.outputs.image }}:${{ needs.prepare.outputs.version }}"
-          docker buildx imagetools inspect "$image"
+          docker buildx imagetools inspect "$IMAGE:$VERSION"
