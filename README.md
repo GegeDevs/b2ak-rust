@@ -201,14 +201,15 @@ seconds.
 
 Create a Docker Hub **Personal Access Token** with **Read & Write** permission
 under **Account settings → Personal access tokens**, then store it and your
-username as repository secrets:
+username as secrets in the `DOCKERHUB` environment:
 
 ```bash
-gh secret set DOCKERHUB_USERNAME --repo GegeDevs/b2ak-rust
-gh secret set DOCKERHUB_TOKEN --repo GegeDevs/b2ak-rust
+gh secret set DOCKERHUB_USERNAME --env DOCKERHUB --repo GegeDevs/b2ak-rust
+gh secret set DOCKERHUB_TOKEN --env DOCKERHUB --repo GegeDevs/b2ak-rust
 ```
 
-Both commands prompt for the value without echoing it. The workflow fails early
+Both commands prompt for the value without echoing it. The workflow declares
+`environment: DOCKERHUB`, so environment secrets resolve, and it fails early
 with a clear error when either secret is missing.
 
 ### Publishing
