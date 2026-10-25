@@ -161,9 +161,8 @@ jobs:
           context: docker-context
           platforms: ${{ matrix.platform }}
           push: true
-          # A tag is required by buildx when pushing, even though the image is
-          # exported by digest only. The merge job creates the real tags.
-          tags: ${{ env.IMAGE }}:${{ matrix.arch }}
+          # With push-by-digest, tags must be repository names without a tag.
+          tags: ${{ env.IMAGE }}
           # Push each platform by digest; the merge job assembles the final
           # multi-arch manifest list with human-readable tags.
           outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
