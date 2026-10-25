@@ -168,7 +168,7 @@ docker compose logs -f
 ```
 
 Update to a newer release with the same pull/up pair. Pin a version by changing
-`image:` to an exact tag such as `gegedesembri/b2ak:0.1.0`.
+`image:` to an exact tag such as `gegedesembri/b2ak:0.1.1`.
 
 The runtime image is Alpine-based with only `git` and `ca-certificates`
 installed. The `magiskboot` binary downloaded from the Magisk APK is statically
@@ -225,7 +225,7 @@ The `Release` workflow dispatches this workflow automatically after a GitHub
 Release is published. To republish an existing release manually:
 
 ```bash
-gh workflow run docker.yml --repo GegeDevs/b2ak-rust -f version=v0.1.0
+gh workflow run docker.yml --repo GegeDevs/b2ak-rust -f version=v0.1.1
 gh run watch
 ```
 
@@ -265,7 +265,7 @@ Each archive contains the `b2ak` binary, `README.md`, and `.env.example`.
 A combined `SHA256SUMS` file is published alongside the archives.
 
 ```bash
-version=0.1.0
+version=0.1.1
 base="https://github.com/<owner>/<repo>/releases/download/v${version}"
 
 curl -LO "$base/b2ak-${version}-linux-x86_64.tar.gz"
@@ -288,11 +288,11 @@ downloaded from the latest Magisk APK on first use, so no extra setup is needed.
 2. Tag the commit and push the tag:
 
    ```bash
-   git tag v0.1.0
-   git push origin v0.1.0
+   git tag v0.1.1
+   git push origin v0.1.1
    ```
 
-3. Alternatively, open **Actions → Release → Run workflow** and enter `v0.1.0`.
+3. Alternatively, open **Actions → Release → Run workflow** and enter `v0.1.1`.
    The manual run creates the tag if it does not exist yet.
 
 The version in the tag (or manual input) must match `Cargo.toml`, otherwise the
