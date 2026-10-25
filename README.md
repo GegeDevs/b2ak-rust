@@ -5,6 +5,10 @@ Upload a boot image (or send a download link), and the bot unpacks it with
 `magiskboot`, swaps the extracted kernel into a fresh AnyKernel checkout, and
 sends back a recovery-flashable zip.
 
+> **Attribution:** This project is a Rust rewrite of
+> [zylhdrXP/bootimg-to-anykernel](https://github.com/zylhdrXP/bootimg-to-anykernel).
+> The command flow, limits, and deployment model follow that Python bot.
+
 This is a Rust rewrite of the original Python bot. Like the Python version it
 uses **MTProto** (via [`grammers`](https://github.com/Lonami/grammers)), not the
 HTTP Bot API, so the usual **20 MB download limit does not apply** and modern
@@ -433,5 +437,8 @@ current salt; otherwise the bot falls back to the built-in default.
 
 ## 📄 License
 
-See the upstream Python project and the licenses of the bundled dependencies.
-AnyKernel3 is cloned at runtime and is not redistributed with this bot.
+This is a Rust rewrite of
+[zylhdrXP/bootimg-to-anykernel](https://github.com/zylhdrXP/bootimg-to-anykernel);
+see that project for the original license and credits. The licenses of the
+bundled dependencies also apply. AnyKernel3 is cloned at runtime and is not
+redistributed with this bot.
