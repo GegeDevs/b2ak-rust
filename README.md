@@ -188,7 +188,8 @@ docker compose up -d --build
 The **Docker Hub** workflow publishes a multi-arch image built from the static
 binaries attached to a GitHub Release. Since the binary is copied into the
 image instead of compiled there, even the emulated architectures build in
-seconds.
+seconds. The published image is
+[`gegedesembri/b2ak`](https://hub.docker.com/r/gegedesembri/b2ak).
 
 | Docker platform | Release binary |
 | --- | --- |
@@ -228,12 +229,12 @@ the exact version tag.
 ### Running the image
 
 ```bash
-docker pull <dockerhub-user>/b2ak:latest
+docker pull gegedesembri/b2ak:latest
 
 docker run -d --name b2ak \
   --env-file .env \
   -v b2ak_data:/app/workspace \
-  <dockerhub-user>/b2ak:latest
+  gegedesembri/b2ak:latest
 ```
 
 The image is Alpine-based and needs no Rust toolchain. `magiskboot` is still
