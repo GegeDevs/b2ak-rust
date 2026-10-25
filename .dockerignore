@@ -1,0 +1,8 @@
+target
+.git
+.github
+*.session
+.env
+workspace
+usage.json
+magiskboot

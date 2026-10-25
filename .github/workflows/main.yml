@@ -1,0 +1,48 @@
+name: Run Telegram Repacker Bot
+
+on:
+  schedule:
+    # Restart every 5 hours to stay inside the 6-hour job execution limit.
+    - cron: '0 */5 * * *'
+  workflow_dispatch:
+
+# Only one bot instance may poll Telegram at a time. A fresh run cancels the
+# previous one so there are never two clients fighting over updates.
+concurrency:
+  group: telegram-bot
+  cancel-in-progress: true
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo registry and build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: b2ak
+
+      - name: Build bot
+        run: cargo build --release --locked
+
+      - name: Run bot
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+          OWNER_ID: ${{ secrets.OWNER_ID }}
+          ANYKERNEL_REPO: ${{ secrets.ANYKERNEL_REPO }}
+          ANYKERNEL_BRANCH: ${{ secrets.ANYKERNEL_BRANCH }}
+          GF_TOKEN: ${{ secrets.GF_TOKEN }}
+          GOFILE_WT_SALT: ${{ secrets.GOFILE_WT_SALT }}
+          MAX_CONCURRENT_JOBS: ${{ vars.MAX_CONCURRENT_JOBS }}
+          WORKSPACE_DIR: ${{ github.workspace }}/workspace
+          RUST_LOG: info
+        run: ./target/release/b2ak

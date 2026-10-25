@@ -1,0 +1,26 @@
+services:
+  b2ak:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: b2ak:latest
+    container_name: b2ak-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      WORKSPACE_DIR: /app/workspace
+    volumes:
+      # Persists the Telegram session, usage.json and the cached magiskboot.
+      - bot_data:/app/workspace
+    stop_grace_period: 30s
+    networks:
+      - b2ak-net
+
+volumes:
+  bot_data:
+    driver: local
+
+networks:
+  b2ak-net:
+    driver: bridge

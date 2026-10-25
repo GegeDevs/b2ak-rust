@@ -1,0 +1,9 @@
+/target
+.env
+*.session
+*.session-journal
+magiskboot
+magisk-*.apk
+usage.json
+usage.json.tmp
+workspace/
