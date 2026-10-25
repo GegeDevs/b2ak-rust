@@ -155,31 +155,37 @@ and the cached `magiskboot`.
 
 ## 🐳 Docker
 
+`docker-compose.yaml` pulls the published multi-arch image
+`gegedesembri/b2ak:latest`:
+
 ```bash
 cp .env.example .env
 $EDITOR .env
 
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 docker compose logs -f
 ```
 
-The multi-stage image builds a static musl binary on `rust:1.89-alpine` and
-runs it on `alpine:3.24` with only `git` and `ca-certificates` installed. The
-final image is far smaller than the Debian-based build. The `magiskboot`
-binary downloaded from the Magisk APK is statically linked, so it runs
-unchanged on Alpine/musl.
+Update to a newer release with the same pull/up pair. Pin a version by changing
+`image:` to an exact tag such as `gegedesembri/b2ak:0.1.0`.
+
+The runtime image is Alpine-based with only `git` and `ca-certificates`
+installed. The `magiskboot` binary downloaded from the Magisk APK is statically
+linked, so it runs unchanged on Alpine/musl.
 
 The named volume `bot_data` is mounted at `/app/workspace`, so the session,
-usage data and `magiskboot` survive rebuilds and restarts.
+usage data and `magiskboot` survive restarts and image updates.
 
-To use a published image instead of building locally, replace the `build`
-section in `docker-compose.yaml` with an `image:` reference.
-
-Rebuild after changing the code:
+To build from source instead (for example after modifying the code), uncomment
+the `build:` section in `docker-compose.yaml` and run:
 
 ```bash
 docker compose up -d --build
 ```
+
+The source Dockerfile builds a static musl binary on `rust:1.89-alpine` and
+runs it on `alpine:3.24`.
 
 ---
 

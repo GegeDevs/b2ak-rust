@@ -1,9 +1,13 @@
 services:
   b2ak:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: b2ak:latest
+    # Published multi-arch image built from a GitHub Release.
+    # Pin an exact version (e.g. gegedesembri/b2ak:0.1.0) for reproducible
+    # deployments, or keep `latest` and run `docker compose pull` to update.
+    image: gegedesembri/b2ak:latest
+    # To build from source instead, comment out `image` and uncomment:
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
     container_name: b2ak-bot
     restart: unless-stopped
     env_file:
